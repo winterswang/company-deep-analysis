@@ -1,0 +1,260 @@
+# 数据源配置文件
+# 定义数据源白名单、优先级、可靠性评分
+
+# ====================
+# 财务数据源
+# ====================
+financial_data:
+  # P0 - 官方数据源
+  P0:
+    - name: "公司年报"
+      reliability: 0.95
+      description: "公司官方发布的年度报告"
+      access: "手动下载/巨潮资讯"
+      priority: 1
+      
+    - name: "公司IR"
+      reliability: 0.95
+      description: "公司投资者关系页面"
+      access: "公司官网IR页面"
+      priority: 2
+  
+  # P1 - 专业数据商
+  P1:
+    - name: "TuShare Pro"
+      reliability: 0.90
+      description: "专业金融数据API"
+      access: "TuShare API"
+      api: "tushare.pro"
+      priority: 1
+      requires_token: true
+      
+    - name: "AkShare"
+      reliability: 0.85
+      description: "开源金融数据API"
+      access: "AkShare API"
+      api: "akshare.stock_financial_report_sina"
+      priority: 2
+      requires_token: false
+  
+  # P2 - 专业平台
+  P2:
+    - name: "雪球专业文章"
+      reliability: 0.75
+      description: "雪球平台专业用户分析"
+      access: "雪球爬虫"
+      criteria:
+        - "作者粉丝>1万"
+        - "历史准确率>70%"
+      priority: 1
+
+# ====================
+# 行业数据源
+# ====================
+industry_data:
+  P1:
+    - name: "SNE Research"
+      reliability: 0.90
+      description: "动力电池行业研究机构"
+      access: "官网/研报"
+      priority: 1
+      
+    - name: "IDC"
+      reliability: 0.88
+      description: "IT行业研究机构"
+      access: "官网/研报"
+      priority: 2
+      
+    - name: "Gartner"
+      reliability: 0.88
+      description: "IT行业研究机构"
+      access: "官网/研报"
+      priority: 3
+  
+  P2:
+    - name: "券商研报"
+      reliability: 0.80
+      description: "券商行业研究报告"
+      access: "研报平台"
+      priority: 1
+      
+    - name: "雪球专业文章"
+      reliability: 0.75
+      description: "雪球行业分析文章"
+      access: "雪球爬虫"
+      priority: 2
+
+# ====================
+# 市占率数据源
+# ====================
+market_share:
+  P1:
+    - name: "专业数据商"
+      reliability: 0.85
+      description: "专业市场研究数据"
+      access: "付费数据"
+      priority: 1
+  
+  P2:
+    - name: "券商研报"
+      reliability: 0.80
+      description: "券商研报中的市占率数据"
+      access: "研报平台"
+      priority: 1
+      
+    - name: "雪球专业文章"
+      reliability: 0.70
+      description: "雪球专业用户整理的市占率数据"
+      access: "雪球爬虫"
+      priority: 2
+  
+  P3:
+    - name: "雪球大V"
+      reliability: 0.65
+      description: "雪球认证用户分享的数据"
+      access: "雪球爬虫"
+      criteria:
+        - "认证用户"
+        - "粉丝>1万"
+      priority: 1
+
+# ====================
+# 管理层信息数据源
+# ====================
+management_data:
+  P0:
+    - name: "公司年报"
+      reliability: 0.95
+      description: "年报中的管理层信息"
+      access: "年报"
+      priority: 1
+  
+  P2:
+    - name: "雪球公司页面"
+      reliability: 0.80
+      description: "雪球公司资料页"
+      access: "雪球爬虫"
+      priority: 1
+      
+    - name: "财经媒体报道"
+      reliability: 0.75
+      description: "财经媒体对管理层的报道"
+      access: "Web搜索"
+      priority: 2
+
+# ====================
+# 观点/分析数据源
+# ====================
+opinion_sources:
+  P2:
+    - name: "券商研报"
+      reliability: 0.80
+      description: "券商分析师观点"
+      access: "研报平台"
+      priority: 1
+      
+    - name: "雪球专业文章"
+      reliability: 0.70
+      description: "雪球专业用户分析文章"
+      access: "雪球爬虫"
+      priority: 2
+  
+  P3:
+    - name: "雪球大V"
+      reliability: 0.65
+      description: "雪球认证用户观点"
+      access: "雪球爬虫"
+      priority: 1
+      
+    - name: "公众号文章"
+      reliability: 0.60
+      description: "微信公众号文章"
+      access: "Link Collector"
+      priority: 2
+  
+  P4:
+    - name: "普通博客"
+      reliability: 0.50
+      description: "普通博客文章"
+      access: "Web搜索"
+      priority: 1
+
+# ====================
+# 雪球数据源详细配置
+# ====================
+xueqiu_sources:
+  # 专业用户白名单
+  verified_authors:
+    criteria:
+      - "粉丝数 > 10000"
+      - "历史文章 > 20"
+      - "认证用户优先"
+    reliability_boost: 0.1  # 可靠性加成
+  
+  # 文章类型权重
+  article_types:
+    - type: "财务分析"
+      weight: 0.9
+    - type: "行业研究"
+      weight: 0.85
+    - type: "公司动态"
+      weight: 0.8
+    - type: "投资日记"
+      weight: 0.6
+
+# ====================
+# 升级检索配置
+# ====================
+upgrade_config:
+  # 最大尝试次数
+  max_attempts:
+    financial_data: 3
+    industry_data: 5
+    market_share: 5
+    management_data: 3
+  
+  # 超时时间（秒）
+  timeout_seconds:
+    financial_data: 60
+    industry_data: 120
+    market_share: 120
+    management_data: 60
+  
+  # 升级策略
+  strategy:
+    - step: 1
+      action: "检查当前数据质量"
+      threshold: "B级"
+      
+    - step: 2
+      action: "尝试P0/P1数据源"
+      sources: ["年报", "TuShare", "AkShare"]
+      
+    - step: 3
+      action: "尝试雪球专业文章"
+      sources: ["雪球爬虫"]
+      
+    - step: 4
+      action: "尝试Link Collector"
+      sources: ["链接收藏归档"]
+      
+    - step: 5
+      action: "标注数据不确定性"
+      action_if_fail: "降低决策权重"
+
+# ====================
+# 质量评分配置
+# ====================
+quality_scoring:
+  weights:
+    accuracy: 0.30
+    timeliness: 0.20
+    completeness: 0.20
+    traceability: 0.15
+    bias: 0.15
+  
+  grade_thresholds:
+    A: 90
+    B: 70
+    C: 50
+    D: 0

@@ -21,28 +21,32 @@ wheels/
 *.egg
 
 # Virtual Environment
-.venv/
 venv/
 ENV/
+env/
 
 # IDE
-.idea/
 .vscode/
+.idea/
 *.swp
 *.swo
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Large data files (optional - uncomment if needed)
+# data/local/*.pdf
+# data/local/*.xlsx
+
+# Environment
+.env
+*.env
+
+# Logs
+*.log
 
 # OS
 .DS_Store
 Thumbs.db
-
-# Secrets
-.env
-*.key
-*.pem
-
-# Cache
-/tmp/
-*.cache
-
-# Reports (optional, uncomment if you want to track reports)
-# reports/*.md

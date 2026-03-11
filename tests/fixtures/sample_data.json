@@ -1,0 +1,85 @@
+{
+  "companies": {
+    "mindray": {
+      "name": "迈瑞医疗",
+      "code": "300760",
+      "financial_data": {
+        "roe": 28.6,
+        "gross_margin": 63.1,
+        "asset_turnover": 0.8,
+        "rd_ratio": 10.2,
+        "industry_roe": 15,
+        "years_stable": 8,
+        "competitor_gap": 15,
+        "one_time_income": 0.02,
+        "tech_disruption_risk": 0.2,
+        "competition_intensity": 0.5,
+        "consumer_change": 0.3,
+        "gross_margin_trend": -0.02,
+        "market_share_trend": 0.01,
+        "revenue_growth": 0.05,
+        "rd_trend": 0.08,
+        "user_growth": 0,
+        "marketing_ratio": 0.12
+      },
+      "expected_moat_type": "technology",
+      "expected_reality_grade": "A"
+    },
+    "nintendo": {
+      "name": "任天堂",
+      "code": "7974.T",
+      "financial_data": {
+        "roe": 20.0,
+        "gross_margin": 50.9,
+        "asset_turnover": 0.6,
+        "rd_ratio": 5.0,
+        "industry_roe": 12,
+        "years_stable": 6,
+        "competitor_gap": 20,
+        "one_time_income": 0.05,
+        "tech_disruption_risk": 0.3,
+        "competition_intensity": 0.6,
+        "consumer_change": 0.4,
+        "gross_margin_trend": -0.05,
+        "market_share_trend": -0.02,
+        "revenue_growth": -0.10,
+        "rd_trend": 0.02,
+        "user_growth": 0,
+        "marketing_ratio": 0.08
+      },
+      "expected_moat_type": "brand",
+      "expected_reality_grade": "B"
+    },
+    "fake_moat_company": {
+      "name": "伪护城河公司",
+      "code": "FAKE",
+      "financial_data": {
+        "roe": 16.0,
+        "gross_margin": 25.0,
+        "asset_turnover": 0.5,
+        "rd_ratio": 1.0,
+        "industry_roe": 15.5,
+        "years_stable": 1,
+        "competitor_gap": 2,
+        "one_time_income": 0.3,
+        "tech_disruption_risk": 0.5,
+        "competition_intensity": 0.8,
+        "consumer_change": 0.5,
+        "gross_margin_trend": -0.10,
+        "market_share_trend": -0.05,
+        "revenue_growth": -0.05,
+        "rd_trend": -0.02,
+        "user_growth": -0.10,
+        "marketing_ratio": 0.03
+      },
+      "expected_moat_type": "none",
+      "expected_reality_grade": "D"
+    }
+  },
+  "thresholds": {
+    "roe_excellent": 15,
+    "gross_margin_excellent": 40,
+    "erosion_high": 50,
+    "strengthening_high": 50
+  }
+}

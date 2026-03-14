@@ -1,35 +1,27 @@
-"""Xueqiu (雪球) adapter for financial data and discussions."""
+"""Xueqiu (雪球) adapter using xueqiu-analyzer-skill."""
 
 import sys
 import os
-# Add project root to path
-project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-if project_root not in sys.path:
-    sys.path.insert(0, project_root)
+import json as json_lib
+import subprocess
 
 from sources.base import DataSourceResult
 
 
 class XueqiuAdapter:
-    """Adapter for Xueqiu (雪球) data.
-    
-    Uses xueqiu-analyzer-skill to crawl:
-    - Stock discussions (评论)
-    - News (资讯)
-    - Notices (公告)
-    - Articles (文章)
-    """
+    """Adapter for Xueqiu using xueqiu-analyzer-skill."""
     
     def __init__(self):
         self.source_name = "雪球"
         self.source_type = "crawler"
-        self.xueqiu_project = os.path.join(project_root, "..", "..", "..", "xueqiu-analyzer-skill")
+        self.xueqiu_project = "/root/.openclaw/workspace/xueqiu-analyzer-skill"
+        self.python = "/usr/bin/python3"
     
     async def fetch(self, query: dict) -> DataSourceResult:
         """Fetch data from Xueqiu."""
         try:
-            company = query.get("company", "")
             ticker = query.get("ticker", "")
+            company = query.get("company", "")
             
             if not company and not ticker:
                 return DataSourceResult(
@@ -40,114 +32,162 @@ class XueqiuAdapter:
                     error="No company or ticker provided"
                 )
             
-            # Use ticker as symbol (e.g., "PDD" for 拼多多)
             symbol = ticker if ticker else company
             
-            # Check if xueqiu-analyzer-skill project exists
             if not os.path.exists(self.xueqiu_project):
                 return DataSourceResult(
                     source_name=self.source_name,
                     source_type=self.source_type,
                     data=[],
                     success=False,
-                    error=f"Xueqiu analyzer project not found at {self.xueqiu_project}"
+                    error="Xueqiu project not found"
                 )
             
-            # Add xueqiu-analyzer-skill to path
-            sys.path.insert(0, os.path.join(self.xueqiu_project, "scripts"))
+            # Simple script - just like the demo!
+            script = f'''
+import sys
+sys.path.insert(0, "{self.xueqiu_project}/scripts")
+
+import json
+import logging
+logging.disable(100)
+
+from stock_crawler_v2 import XueqiuStockCrawlerV2
+
+crawler = XueqiuStockCrawlerV2()
+result = crawler.crawl("{symbol}")
+
+discussions = []
+if result and result.discussions:
+    for d in result.discussions[:10]:
+        discussions.append({{
+            "content": d.content[:500] if d.content else "",
+            "author": d.author,
+            "time": d.time
+        }})
+
+news = []
+if result and result.news:
+    for n in result.news[:10]:
+        news.append({{
+            "title": n.title[:200] if n.title else "",
+            "content": n.content[:500] if n.content else "",
+            "link": n.link
+        }})
+
+notices = []
+if result and result.notices:
+    for n in result.notices[:10]:
+        notices.append({{
+            "title": n.title[:200] if n.title else "",
+            "link": n.link
+        }})
+
+data = {{
+    "discussions": discussions,
+    "news": news,
+    "notices": notices
+}}
+
+print("XUEQIU_JSON_START")
+print(json.dumps(data, ensure_ascii=False))
+print("XUEQIU_JSON_END")
+'''
             
-            try:
-                # Import the crawler from xueqiu-analyzer-skill
-                from stock_crawler_v2 import XueqiuStockCrawlerV2
-                
-                # Create crawler instance (headless mode)
-                crawler = XueqiuStockCrawlerV2(headless=True)
-                
-                # Crawl the stock
-                stock_info = crawler.crawl(
-                    symbol=symbol,
-                    max_discussions=20,
-                    max_news=20,
-                    max_notices=10
+            result = subprocess.run(
+                [self.python, "-c", script],
+                capture_output=True,
+                text=True,
+                timeout=1800,
+                cwd=f"{self.xueqiu_project}/scripts"
+            )
+            
+            if result.returncode != 0:
+                return DataSourceResult(
+                    source_name=self.source_name,
+                    source_type=self.source_type,
+                    data=[],
+                    success=False,
+                    error=f"Crawler error: {result.stderr[:150]}"
                 )
-                
-                if stock_info is None:
+            
+            # Parse JSON
+            output = result.stdout
+            if "XUEQIU_JSON_START" in output:
+                try:
+                    json_start = output.find("XUEQIU_JSON_START") + len("XUEQIU_JSON_START")
+                    json_end = output.find("XUEQIU_JSON_END")
+                    json_str = output[json_start:json_end].strip()
+                    crawled_data = json_lib.loads(json_str)
+                except Exception as e:
                     return DataSourceResult(
                         source_name=self.source_name,
                         source_type=self.source_type,
                         data=[],
                         success=False,
-                        error=f"Failed to crawl {symbol} from Xueqiu"
+                        error=f"JSON error: {str(e)[:100]}"
                     )
-                
-                # Convert to our data format
-                data = []
-                
-                # Add discussions
-                for d in stock_info.discussions[:10]:
-                    data.append({
-                        "type": "discussion",
-                        "source": "雪球",
-                        "title": d.content[:100] if d.content else "",
-                        "content": d.content,
-                        "author": d.author,
-                        "created_at": str(d.created_at) if d.created_at else "",
-                        "likes": d.likes,
-                        "comments": d.comments,
-                        "symbol": symbol
-                    })
-                
-                # Add news
-                for n in stock_info.news[:10]:
-                    data.append({
-                        "type": "news",
-                        "source": "雪球",
-                        "title": n.title,
-                        "content": n.content,
-                        "published_at": str(n.published_at) if n.published_at else "",
-                        "symbol": symbol
-                    })
-                
-                # Add notices
-                for nt in stock_info.notices[:5]:
-                    data.append({
-                        "type": "notice",
-                        "source": "雪球",
-                        "title": nt.title,
-                        "content": nt.content,
-                        "published_at": str(nt.published_at) if nt.published_at else "",
-                        "symbol": symbol
-                    })
-                
-                return DataSourceResult(
-                    source_name=self.source_name,
-                    source_type=self.source_type,
-                    data=data,
-                    success=True
-                )
-                
-            except ImportError as e:
+            else:
                 return DataSourceResult(
                     source_name=self.source_name,
                     source_type=self.source_type,
                     data=[],
                     success=False,
-                    error=f"Cannot import Xueqiu crawler: {e}"
-                )
-            except Exception as e:
-                return DataSourceResult(
-                    source_name=self.source_name,
-                    source_type=self.source_type,
-                    data=[],
-                    success=False,
-                    error=f"Error crawling Xueqiu: {e}"
+                    error="No JSON output"
                 )
             
+            # Convert
+            data = []
+            
+            for d in crawled_data.get("discussions", []):
+                data.append({
+                    "type": "discussion",
+                    "source": "雪球",
+                    "content": d.get("content", ""),
+                    "author": d.get("author", ""),
+                    "time": d.get("time", ""),
+                    "symbol": symbol
+                })
+            
+            for n in crawled_data.get("news", []):
+                data.append({
+                    "type": "news",
+                    "source": "雪球",
+                    "title": n.get("title", ""),
+                    "content": n.get("content", ""),
+                    "link": n.get("link", ""),
+                    "symbol": symbol
+                })
+            
+            for nt in crawled_data.get("notices", []):
+                data.append({
+                    "type": "notice",
+                    "source": "雪球",
+                    "title": nt.get("title", ""),
+                    "link": nt.get("link", ""),
+                    "symbol": symbol
+                })
+            
+            return DataSourceResult(
+                source_name=self.source_name,
+                source_type=self.source_type,
+                data=data,
+                success=True
+            )
+            
+        except subprocess.TimeoutExpired:
+            return DataSourceResult(
+                source_name=self.source_name,
+                source_type=self.source_type,
+                data=[],
+                success=False,
+                error="Crawler timeout"
+            )
         except Exception as e:
             return DataSourceResult(
                 source_name=self.source_name,
                 source_type=self.source_type,
                 data=[],
                 success=False,
-                error=str(e)
+                error=str(e)[:200]
             )

@@ -201,9 +201,13 @@ class DataCollector:
     def _calculate_derived_metrics(self, data: list[dict]) -> list[dict]:
         """Calculate derived financial metrics (ROE, ROIC, margins, etc.)."""
         
-        # Group by year
+        # Separate financial data (with year) from other data (search results, etc.)
+        financial_data = [item for item in data if item.get("year")]
+        other_data = [item for item in data if not item.get("year")]
+        
+        # Group financial data by year
         by_year = {}
-        for item in data:
+        for item in financial_data:
             year = item.get("year")
             if year:
                 if year not in by_year:
@@ -212,6 +216,8 @@ class DataCollector:
         
         # Calculate ratios for each year
         result = []
+        
+        # Process financial data with derived metrics
         for year, metrics in sorted(by_year.items(), reverse=True):
             # Get base values (in yuan, convert to billion)
             revenue = metrics.get("主营收入", 0) / 1e9
@@ -237,8 +243,8 @@ class DataCollector:
                 if prev_revenue > 0:
                     derived["revenue_growth_yoy"] = round((revenue - prev_revenue) / prev_revenue * 100, 2)
             
-            # Build result
-            for item in data:
+            # Build result for items with this year
+            for item in financial_data:
                 if item.get("year") == year:
                     new_item = {
                         **item,
@@ -252,6 +258,9 @@ class DataCollector:
                         }
                     }
                     result.append(new_item)
+        
+        # Add other data (search results, news, etc.) without modification
+        result.extend(other_data)
         
         return result
     

@@ -1,21 +1,14 @@
-"""Exa adapter for web search."""
+"""Exa adapter for web search - using direct API calls."""
 
 import sys
 import os
-# Add project root to path for search module
-project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-if project_root not in sys.path:
-    sys.path.insert(0, project_root)
+import json
+import requests
 
-# Also add skills directory
-skills_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-if skills_dir not in sys.path:
-    sys.path.insert(0, skills_dir)
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
 
 from sources.base import DataSourceResult
 
-print(f"DEBUG: project_root = {project_root}")
-print(f"DEBUG: sys.path[:3] = {sys.path[:3]}")
 
 class ExaAdapter:
     """Adapter for Exa search API."""
@@ -24,9 +17,10 @@ class ExaAdapter:
         self.source_name = "Exa"
         self.source_type = "search"
         self.api_key = os.getenv("EXA_API_KEY", "")
+        self.base_url = "https://api.exa.ai"
     
     async def fetch(self, query: dict) -> DataSourceResult:
-        """Fetch data from Exa search."""
+        """Fetch data from Exa search using direct API."""
         try:
             search_query = query.get("search_query", query.get("company", ""))
             
@@ -39,32 +33,45 @@ class ExaAdapter:
                     error="Exa API key not set (EXA_API_KEY)"
                 )
             
-            # Import from existing search module
-            from search.search_engine import ExaSearchProvider
+            # Use Exa API directly
+            headers = {
+                "Authorization": f"Bearer {self.api_key}",
+                "Content-Type": "application/json"
+            }
             
-            provider = ExaSearchProvider(self.api_key)
+            payload = {
+                "query": f"{search_query} 财务分析",
+                "num_results": 10,
+                "type": "auto"
+            }
             
-            if not provider.is_available():
+            response = requests.post(
+                f"{self.base_url}/search",
+                headers=headers,
+                json=payload,
+                timeout=30
+            )
+            
+            if response.status_code != 200:
                 return DataSourceResult(
                     source_name=self.source_name,
                     source_type=self.source_type,
                     data=[],
                     success=False,
-                    error="Exa API key not available"
+                    error=f"Exa API error: {response.status_code}"
                 )
             
-            results = provider.search(f"{search_query} 财务分析", max_results=10)
+            results = response.json()
             
             data = []
-            for r in results:
+            for item in results.get("results", []):
                 data.append({
                     "type": "search",
                     "source": "Exa",
-                    "title": r.title,
-                    "content": r.content,
-                    "url": r.url,
-                    "source_type": r.source_type,
-                    "credibility": str(r.credibility) if r.credibility else "unknown"
+                    "title": item.get("title", ""),
+                    "content": item.get("text", ""),
+                    "url": item.get("url", ""),
+                    "score": item.get("score", 0)
                 })
             
             return DataSourceResult(
@@ -80,7 +87,7 @@ class ExaAdapter:
                 source_type=self.source_type,
                 data=[],
                 success=False,
-                error=f"Search module not available: {e}"
+                error=f"requests not installed: {e}"
             )
         except Exception as e:
             return DataSourceResult(

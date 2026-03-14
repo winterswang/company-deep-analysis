@@ -45,19 +45,44 @@ class DataCollector:
     
     def _register_adapters(self):
         """Register available data source adapters."""
+        # Financial data sources
         try:
             from sources.akshare_adapter import AkShareAdapter
             self.adapters["akshare"] = AkShareAdapter()
-            logger.info("Registered AkShare adapter")
+            logger.info("Registered AkShare adapter (financial)")
         except ImportError as e:
             logger.warning(f"Could not register AkShare adapter: {e}")
         
+        # Search sources
         try:
             from sources.tavily_adapter import TavilyAdapter
             self.adapters["tavily"] = TavilyAdapter()
-            logger.info("Registered Tavily adapter")
+            logger.info("Registered Tavily adapter (search)")
         except ImportError as e:
             logger.warning(f"Could not register Tavily adapter: {e}")
+        
+        try:
+            from sources.exa_adapter import ExaAdapter
+            self.adapters["exa"] = ExaAdapter()
+            logger.info("Registered Exa adapter (search)")
+        except ImportError as e:
+            logger.warning(f"Could not register Exa adapter: {e}")
+        
+        # Crawler sources
+        try:
+            from sources.xueqiu_adapter import XueqiuAdapter
+            self.adapters["xueqiu"] = XueqiuAdapter()
+            logger.info("Registered Xueqiu adapter (crawler)")
+        except ImportError as e:
+            logger.warning(f"Could not register Xueqiu adapter: {e}")
+        
+        # Local cache
+        try:
+            from sources.local_file_adapter import LocalFileAdapter
+            self.adapters["local"] = LocalFileAdapter()
+            logger.info("Registered LocalFile adapter (cache)")
+        except ImportError as e:
+            logger.warning(f"Could not register LocalFile adapter: {e}")
     
     async def collect(self, query: str, context: dict = None) -> dict:
         """

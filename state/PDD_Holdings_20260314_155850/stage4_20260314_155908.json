@@ -1,0 +1,27 @@
+{
+  "stage": "moat_identification",
+  "status": "partial",
+  "timestamp": "2026-03-14T15:59:02.769611",
+  "company": "PDD Holdings",
+  "core_capability": "高定价权与卓越成本管控能力",
+  "moat_type": "成本优势",
+  "confidence": 0.6,
+  "evidence": [
+    "毛利率 60.9%，显著高于行业均值",
+    "ROE 44.9%，资本效率高",
+    "... 护城河正在被轻易跨过。 拼多多为了打造百亿补贴，累计投入的营销和 ... Even pdd holdings, which was the first to focus on the lowe",
+    "周四下午，阿里巴巴-W（09988）股價盤中最大跌幅超過3.5%，再創自去年8月底以來的新低。資料顯示，阿里巴巴-W的賣空股數由2月初的564.05萬股快速攀升至3月4日的2296.53萬股，賣空金額"
+  ],
+  "verification_questions": [
+    "低成本来自哪里？",
+    "成本优势来源是否可持续？",
+    "竞争对手能否复制这个成本结构？"
+  ],
+  "quality_gate": {
+    "passed": false,
+    "issues": [
+      "置信度不足: 60% < 70%"
+    ]
+  },
+  "next_action": "stage5_with_warnings"
+}

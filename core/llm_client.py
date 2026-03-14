@@ -17,7 +17,7 @@ class LLMConfig:
     api_key: str
     base_url: str = "https://dashscope.aliyuncs.com/api/v1/services/aigc/text-generation/generation"
     model: str = "qwen-plus"  # 阿里云百炼模型
-    max_tokens: int = 4096
+    max_tokens: int = 8192  # 增加到8192，支持长篇报告
     temperature: float = 0.7
 
 
@@ -41,11 +41,10 @@ class LLMClient:
                     if env_path.exists():
                         with open(env_path) as f:
                             for line in f:
-                                if "=" in line and not line.startswith("#"):
-                                    key, value = line.strip().split("=", 1)
-                                    if key == "DASHSCOPE_API_KEY":
-                                        api_key = value
-                                        break
+                                line = line.strip()
+                                if line.startswith("DASHSCOPE_API_KEY="):
+                                    api_key = line.split("=", 1)[1]
+                                    break
                         if api_key:
                             break
 
@@ -54,7 +53,7 @@ class LLMClient:
             self.config = config
 
         if not self.config.api_key:
-            raise ValueError("DASHSCOPE_API_KEY not found in environment variables")
+            raise ValueError("DASHSCOPE_API_KEY not found in environment variables or .env files")
 
     def chat(self, messages: list, temperature: Optional[float] = None) -> str:
         """发送聊天请求"""

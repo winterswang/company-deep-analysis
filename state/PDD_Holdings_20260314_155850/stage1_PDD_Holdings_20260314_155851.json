@@ -1,0 +1,122 @@
+{
+  "stage": "data_collection",
+  "status": "success",
+  "timestamp": "2026-03-14T15:58:50.921509",
+  "company": "PDD Holdings",
+  "ticker": "PDD",
+  "market": "us",
+  "verified_data": [
+    {
+      "name": "ROE",
+      "value": 44.924,
+      "source": "AkShare-东方财富",
+      "quality": "P0",
+      "validation": {
+        "source_verified": true,
+        "range_check": true,
+        "range_issues": [],
+        "source_quality": "P0",
+        "passed": true
+      }
+    },
+    {
+      "name": "毛利率",
+      "value": 60.9227,
+      "source": "AkShare-东方财富",
+      "quality": "P0",
+      "validation": {
+        "source_verified": true,
+        "range_check": true,
+        "range_issues": [],
+        "source_quality": "P0",
+        "passed": true
+      }
+    },
+    {
+      "name": "净利润",
+      "value": 1124.3451,
+      "source": "AkShare-东方财富",
+      "quality": "P0",
+      "validation": {
+        "source_verified": true,
+        "range_check": true,
+        "range_issues": [],
+        "source_quality": "P0",
+        "passed": true
+      }
+    },
+    {
+      "name": "EPS",
+      "value": 20.31,
+      "source": "AkShare-东方财富",
+      "quality": "P0",
+      "validation": {
+        "source_verified": true,
+        "source_quality": "P0",
+        "passed": true
+      }
+    },
+    {
+      "name": "资产负债率",
+      "value": 37.962,
+      "source": "AkShare-东方财富",
+      "quality": "P0",
+      "validation": {
+        "source_verified": true,
+        "source_quality": "P0",
+        "passed": true
+      }
+    },
+    {
+      "name": "流动比率",
+      "value": 2.2059,
+      "source": "AkShare-东方财富",
+      "quality": "P0",
+      "validation": {
+        "source_verified": true,
+        "source_quality": "P0",
+        "passed": true
+      }
+    },
+    {
+      "name": "ROA",
+      "value": 26.3587,
+      "source": "AkShare-东方财富",
+      "quality": "P0",
+      "validation": {
+        "source_verified": true,
+        "source_quality": "P0",
+        "passed": true
+      }
+    },
+    {
+      "name": "净利率",
+      "value": 28.5486,
+      "source": "AkShare-东方财富",
+      "quality": "P0",
+      "validation": {
+        "source_verified": true,
+        "source_quality": "P0",
+        "passed": true
+      }
+    }
+  ],
+  "total_collected": 8,
+  "total_verified": 8,
+  "avg_quality_score": 0.0,
+  "quality_gate": {
+    "passed": true,
+    "criteria": {
+      "min_core_metrics": 4,
+      "min_quality_score": 6.0,
+      "min_trusted_ratio": 0.5,
+      "required_sources": [
+        "P0"
+      ]
+    },
+    "issues": []
+  },
+  "issues": [],
+  "warnings": [],
+  "next_action": "stage2"
+}

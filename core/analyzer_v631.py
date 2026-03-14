@@ -88,44 +88,44 @@ class DialecticalAnalyzerV631:
         print("\n【第1轮】分析师生成初始报告...")
         current_report = self.analyst.generate_initial_report(company, evidence)
         
-        iteration_record = {
-            "round": 1,
-            "report": current_report,
-            "evaluation": None,
-            "todos_executed": []
-        }
-        
-        # 后续轮次：挑战→改进
-        for round_num in range(2, self.max_iterations + 1):
-            print(f"\n【第{round_num-1}轮】挑战者评估...")
+        # 迭代轮次：评估→改进
+        for round_num in range(1, self.max_iterations + 1):
+            print(f"\n【第{round_num}轮】挑战者评估...")
             
             # 挑战者评估
-            evaluation = self.challenger.evaluate(current_report, round_num - 1)
+            evaluation = self.challenger.evaluate(current_report, round_num)
             
             print(f"  评分: {evaluation.score}/100")
             print(f"  挑战点数: {len(evaluation.challenges)}")
             print(f"  ToDo数: {len(evaluation.todos)}")
             
-            iteration_record["evaluation"] = {
-                "score": evaluation.score,
-                "scores_by_dimension": evaluation.scores_by_dimension,
-                "challenges": [
-                    {
-                        "content": c.content,
-                        "type": c.challenge_type,
-                        "severity": c.severity
-                    }
-                    for c in evaluation.challenges
-                ],
-                "todos": [
-                    {
-                        "task": t.task,
-                        "type": t.todo_type,
-                        "effect": t.expected_effect
-                    }
-                    for t in evaluation.todos
-                ]
+            # 保存本轮迭代记录（包含评估结果）
+            iteration_record = {
+                "round": round_num,
+                "report": current_report,
+                "evaluation": {
+                    "score": evaluation.score,
+                    "scores_by_dimension": evaluation.scores_by_dimension,
+                    "challenges": [
+                        {
+                            "content": c.content,
+                            "type": c.challenge_type,
+                            "severity": c.severity
+                        }
+                        for c in evaluation.challenges
+                    ],
+                    "todos": [
+                        {
+                            "task": t.task,
+                            "type": t.todo_type,
+                            "effect": t.expected_effect
+                        }
+                        for t in evaluation.todos
+                    ]
+                },
+                "todos_executed": []
             }
+            self.iterations.append(iteration_record)
             
             # 判断是否终止
             if not evaluation.should_continue:
@@ -136,6 +136,9 @@ class DialecticalAnalyzerV631:
             print(f"\n【第{round_num}轮】执行ToDo...")
             new_evidence = self._execute_todos(evaluation.todos, company)
             
+            # 记录执行的ToDo
+            iteration_record["todos_executed"] = [t.task for t in evaluation.todos]
+            
             # 分析师改进报告
             print(f"  分析师改进报告...")
             current_report = self.analyst.improve_report(
@@ -144,15 +147,6 @@ class DialecticalAnalyzerV631:
                 [t.__dict__ for t in evaluation.todos],
                 new_evidence
             )
-            
-            iteration_record = {
-                "round": round_num,
-                "report": current_report,
-                "evaluation": None,
-                "todos_executed": [t.task for t in evaluation.todos]
-            }
-            
-            self.iterations.append(iteration_record)
         
         return current_report
     
@@ -304,10 +298,15 @@ class DialecticalAnalyzerV631:
 """
         
         for i, iteration in enumerate(self.iterations, 1):
-            eval_data = iteration.get("evaluation", {})
-            score = eval_data.get("score", "N/A")
-            challenges = len(eval_data.get("challenges", []))
-            todos = len(eval_data.get("todos", []))
+            eval_data = iteration.get("evaluation")
+            if eval_data and isinstance(eval_data, dict):
+                score = eval_data.get("score", "N/A")
+                challenges = len(eval_data.get("challenges", []))
+                todos = len(eval_data.get("todos", []))
+            else:
+                score = "N/A"
+                challenges = 0
+                todos = 0
             header += f"| {i} | {score} | {challenges} | {todos} |\n"
         
         header += "\n---\n\n"

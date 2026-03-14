@@ -240,20 +240,36 @@ class AkShareFinancialProvider:
                 except Exception as e:
                     print(f"  ⚠️ 美股行情获取失败: {e}")
                 
-                # 尝试获取财务指标
+                # 尝试获取财务指标（东方财富美股数据）
                 try:
-                    df_financial = ak.stock_us_fundamental(symbol=ticker)
+                    df_financial = ak.stock_financial_us_analysis_indicator_em(symbol=ticker, indicator='年报')
                     if df_financial is not None and not df_financial.empty:
-                        for _, row in df_financial.head(10).iterrows():
-                            data_points.append(DataPoint(
-                                name=str(row.get('指标', '')),
-                                value=str(row.get('值', '')),
-                                source="AkShare",
-                                quality="P0",
-                                timestamp=datetime.now().isoformat(),
-                                validity="最新"
-                            ))
-                        print(f"  ✅ 获取财务指标成功")
+                        latest = df_financial.iloc[0]
+                        
+                        # 提取关键财务指标
+                        metrics = [
+                            ("ROE", latest.get('ROE_AVG')),
+                            ("ROA", latest.get('ROA')),
+                            ("毛利率", latest.get('GROSS_PROFIT_RATIO')),
+                            ("净利率", latest.get('NET_PROFIT_RATIO')),
+                            ("营收", latest.get('OPERATE_INCOME')),
+                            ("净利润", latest.get('PARENT_HOLDER_NETPROFIT')),
+                            ("EPS", latest.get('BASIC_EPS')),
+                            ("资产负债率", latest.get('DEBT_ASSET_RATIO')),
+                            ("流动比率", latest.get('CURRENT_RATIO')),
+                        ]
+                        
+                        for name, value in metrics:
+                            if value is not None and not (isinstance(value, float) and value != value):
+                                data_points.append(DataPoint(
+                                    name=name,
+                                    value=str(value),
+                                    source="AkShare-东方财富",
+                                    quality="P0",
+                                    timestamp=datetime.now().isoformat(),
+                                    validity="年报"
+                                ))
+                        print(f"  ✅ 获取美股财务指标成功: {len(metrics)} 个指标")
                         
                 except Exception as e:
                     print(f"  ⚠️ 财务指标获取失败: {e}")

@@ -1,0 +1,38 @@
+{
+  "stage": "financial_anomaly",
+  "status": "success",
+  "timestamp": "2026-03-14T15:58:51.602005",
+  "company": "PDD Holdings",
+  "financial_data": {
+    "ROE": 44.924,
+    "毛利率": 60.9227,
+    "净利润": 1124.3451,
+    "EPS": 20.31,
+    "资产负债率": 37.962,
+    "流动比率": 2.2059,
+    "ROA": 26.3587,
+    "净利率": 28.5486
+  },
+  "anomalies": [
+    {
+      "metric": "ROE",
+      "value": 44.924,
+      "severity": "high",
+      "description": "ROE 44.924% 显著高于行业均值（约30%）",
+      "question": "高ROE是否主要源于高财务杠杆、资产周转加速，还是净利润率异常提升？请拆解杜邦三因素贡献度。"
+    },
+    {
+      "metric": "毛利率",
+      "value": 60.9227,
+      "severity": "high",
+      "description": "毛利率 60.9227% 显著高于行业均值（约60%）",
+      "question": "毛利率超行业均值，是否因产品结构升级、高毛利新品占比提升或原材料成本显著下降所致？"
+    }
+  ],
+  "primary_question": "高ROE是否主要源于高财务杠杆、资产周转加速，还是净利润率异常提升？请拆解杜邦三因素贡献度。",
+  "quality_gate": {
+    "passed": true,
+    "issues": []
+  },
+  "next_action": "stage3"
+}

@@ -2,10 +2,20 @@
 
 import sys
 import os
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Add project root to path for search module
+project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
+
+# Also add skills directory
+skills_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if skills_dir not in sys.path:
+    sys.path.insert(0, skills_dir)
 
 from sources.base import DataSourceResult
 
+print(f"DEBUG: project_root = {project_root}")
+print(f"DEBUG: sys.path[:3] = {sys.path[:3]}")
 
 class ExaAdapter:
     """Adapter for Exa search API."""

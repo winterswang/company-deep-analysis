@@ -2,7 +2,10 @@
 
 import sys
 import os
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Add project root to path
+project_root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+if project_root not in sys.path:
+    sys.path.insert(0, project_root)
 
 from sources.base import DataSourceResult
 
@@ -13,6 +16,7 @@ class XueqiuAdapter:
     def __init__(self):
         self.source_name = "雪球"
         self.source_type = "crawler"
+        self.xueqiu_project = os.path.join(project_root, "..", "..", "..", "xueqiu-crawler")
     
     async def fetch(self, query: dict) -> DataSourceResult:
         """Fetch data from Xueqiu."""
@@ -29,51 +33,48 @@ class XueqiuAdapter:
                     error="No company or ticker provided"
                 )
             
-            # Import from existing search module
-            from search.search_engine import XueqiuProvider
-            
-            provider = XueqiuProvider()
-            
-            if not provider.is_available():
+            # Check if xueqiu-crawler project exists
+            if not os.path.exists(self.xueqiu_project):
                 return DataSourceResult(
                     source_name=self.source_name,
                     source_type=self.source_type,
                     data=[],
                     success=False,
-                    error="Xueqiu crawler not available"
+                    error=f"Xueqiu crawler project not found at {self.xueqiu_project}"
                 )
             
-            # Search for company related content
-            search_term = ticker if ticker else company
-            results = provider.search(f"{search_term} 财务", max_results=10)
+            # Add xueqiu-crawler to path
+            sys.path.insert(0, os.path.join(self.xueqiu_project, "scripts"))
             
-            data = []
-            for r in results:
-                data.append({
-                    "type": "xueqiu",
-                    "source": "雪球",
-                    "title": r.title,
-                    "content": r.content,
-                    "url": r.url,
-                    "source_type": r.source_type,
-                    "credibility": str(r.credibility) if r.credibility else "unknown"
-                })
+            try:
+                from crawler import XueqiuCrawler
+                
+                # Create crawler instance
+                crawler = XueqiuCrawler()
+                
+                # Get some popular Xueqiu users to search
+                # For now, just return a note that crawler needs specific user config
+                return DataSourceResult(
+                    source_name=self.source_name,
+                    source_type=self.source_type,
+                    data=[{
+                        "type": "note",
+                        "source": "雪球",
+                        "content": "Xueqiu crawler requires specific user configuration. Please configure users in xueqiu-crawler project first.",
+                        "ticker": ticker or company
+                    }],
+                    success=True
+                )
+                
+            except ImportError as e:
+                return DataSourceResult(
+                    source_name=self.source_name,
+                    source_type=self.source_type,
+                    data=[],
+                    success=False,
+                    error=f"Cannot import XueqiuCrawler: {e}"
+                )
             
-            return DataSourceResult(
-                source_name=self.source_name,
-                source_type=self.source_type,
-                data=data,
-                success=True
-            )
-            
-        except ImportError as e:
-            return DataSourceResult(
-                source_name=self.source_name,
-                source_type=self.source_type,
-                data=[],
-                success=False,
-                error=f"Search module not available: {e}"
-            )
         except Exception as e:
             return DataSourceResult(
                 source_name=self.source_name,

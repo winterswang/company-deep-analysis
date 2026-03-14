@@ -315,6 +315,62 @@ class DataCollector:
     def _generate_information_index(self, data: list[dict], parsed: dict) -> dict:
         """Generate information index - where detailed data is stored."""
         
+        # Categorize data by source and type
+        by_source = {}
+        for item in data:
+            src = item.get("source", "unknown")
+            if src not in by_source:
+                by_source[src] = {"count": 0, "types": set()}
+            by_source[src]["count"] += 1
+            by_source[src]["types"].add(item.get("type", "unknown"))
+        
+        # Build reference structure
+        reference_structure = {}
+        
+        # Financial data
+        years = sorted([d.get("year") for d in data if d.get("year")], reverse=True)
+        if years:
+            reference_structure["financial_data"] = {
+                "included": True,
+                "years": years,
+                "path": "./data/financial_5y.json",
+                "metrics_count": len([d for d in data if d.get("year")])
+            }
+        
+        # Tavily search
+        if "Tavily" in by_source:
+            reference_structure["tavily_search"] = {
+                "included": True,
+                "path": "./data/search_tavily.json",
+                "count": by_source["Tavily"]["count"]
+            }
+        
+        # Exa search
+        if "Exa" in by_source:
+            reference_structure["exa_search"] = {
+                "included": True,
+                "path": "./data/search_exa.json",
+                "count": by_source["Exa"]["count"]
+            }
+        
+        # Xueqiu data
+        if "雪球" in by_source:
+            reference_structure["xueqiu_discussions"] = {
+                "included": True,
+                "path": "./data/xueqiu_discussions.json",
+                "count": len([d for d in data if d.get("source") == "雪球" and d.get("type") == "discussion"])
+            }
+            reference_structure["xueqiu_news"] = {
+                "included": True,
+                "path": "./data/xueqiu_news.json",
+                "count": len([d for d in data if d.get("source") == "雪球" and d.get("type") == "news"])
+            }
+            reference_structure["xueqiu_notices"] = {
+                "included": True,
+                "path": "./data/xueqiu_notices.json",
+                "count": len([d for d in data if d.get("source") == "雪球" and d.get("type") == "notice"])
+            }
+        
         return {
             "version": "1.0",
             "company": parsed.get("company", ""),
@@ -326,28 +382,36 @@ class DataCollector:
                 "financial_5y": {
                     "type": "financial_data",
                     "format": "json",
-                    "path": "./data/financial_5y.json",
-                    "description": "5-year financial data with derived metrics"
+                    "path": "./data/financial_5y.json"
                 },
-                "quality_scores": {
-                    "type": "quality_data", 
+                "search_tavily": {
+                    "type": "search",
+                    "format": "json", 
+                    "path": "./data/search_tavily.json"
+                },
+                "search_exa": {
+                    "type": "search",
                     "format": "json",
-                    "path": "./data/quality_scores.json",
-                    "description": "Quality scores for each data point"
+                    "path": "./data/search_exa.json"
+                },
+                "xueqiu_discussions": {
+                    "type": "discussion",
+                    "format": "json",
+                    "path": "./data/xueqiu_discussions.json"
+                },
+                "xueqiu_news": {
+                    "type": "news",
+                    "format": "json",
+                    "path": "./data/xueqiu_news.json"
+                },
+                "xueqiu_notices": {
+                    "type": "notice",
+                    "format": "json",
+                    "path": "./data/xueqiu_notices.json"
                 }
             },
             
-            "reference_structure": {
-                "financial_data": {
-                    "included": True,
-                    "years": sorted([d.get("year") for d in data if d.get("year")], reverse=True),
-                    "metrics_count": len(data)
-                },
-                "annual_reports": {"included": False},
-                "news": {"included": False},
-                "xueqiu_articles": {"included": False},
-                "announcements": {"included": False}
-            }
+            "reference_structure": reference_structure
         }
     
     def _parse_query(self, query: str) -> dict:

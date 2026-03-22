@@ -1,0 +1,686 @@
+"""
+Analysis Engine - 分析引擎
+
+通过双 LLM Loop 机制对企业进行多维度深度分析
+
+需求文档: 03-analysis-engine.md
+"""
+
+import os
+import sys
+import json
+import re
+from typing import Dict, List, Optional, Any, Tuple
+from datetime import datetime
+from dataclasses import asdict
+
+# OpenAI LLM
+import openai
+
+# 添加 data_collector 路径
+DATA_COLLECTOR_PATH = "/root/.openclaw/workspace-stock/skills/company-deep-analysis"
+AKSHARE_SERVICE_PATH = "/root/.openclaw/workspace/akshare_docs"
+sys.path.insert(0, DATA_COLLECTOR_PATH)
+sys.path.insert(0, AKSHARE_SERVICE_PATH)
+
+from data_collector import DataQueryTools
+
+from .schemas import (
+    AnalysisEngineResult, DimensionAnalysis, QuestionAnswer,
+    ALL_DIMENSIONS, DIMENSION_NAMES, DIMENSION_QUESTIONS, DIMENSION_DATA_SOURCES
+)
+from .prompts import (
+    QUESTION_GENERATOR_SYSTEM, ANSWER_PROVIDER_SYSTEM,
+    build_question_generator_prompt, build_answer_provider_prompt,
+    build_initial_question_prompt, build_conclusion_prompt
+)
+
+
+# Token 估算函数
+def estimate_tokens(text: str) -> int:
+    """估算文本的 token 数量"""
+    if not text:
+        return 0
+    
+    chinese_chars = len(re.findall(r'[\u4e00-\u9fff]', text))
+    other_chars = len(text) - chinese_chars
+    
+    tokens = int(chinese_chars / 1.5) + int(other_chars / 4)
+    return max(tokens, 1)
+
+
+class AnalysisEngine:
+    """
+    多维度分析引擎
+    
+    职责:
+    1. 加载 data-collector 输出的数据
+    2. 对每个维度执行双 LLM Loop
+    3. 评分并决定是否继续
+    4. 汇总各维度分析结果
+    """
+    
+    def __init__(self, data_collector_output_dir: str):
+        """
+        初始化分析引擎
+        
+        Args:
+            data_collector_output_dir: data-collector 输出目录
+        """
+        self.output_dir = data_collector_output_dir
+        self.data_collector = DataQueryTools()
+        self._data_cache = {}
+        self._token_count = 0
+    
+    # ==================== 数据加载 ====================
+    
+    def load_data_index(self) -> Dict[str, Any]:
+        """读取信息索引"""
+        index_path = f"{self.output_dir}/data_index.json"
+        if os.path.exists(index_path):
+            with open(index_path, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        return {}
+    
+    def load_report(self) -> str:
+        """读取核心指标报告"""
+        report_path = f"{self.output_dir}/report.md"
+        if os.path.exists(report_path):
+            with open(report_path, 'r', encoding='utf-8') as f:
+                return f.read()
+        return ""
+    
+    def load_json_data(self, filename: str) -> Any:
+        """读取 JSON 数据文件"""
+        if filename in self._data_cache:
+            return self._data_cache[filename]
+        
+        file_path = f"{self.output_dir}/{filename}"
+        if os.path.exists(file_path):
+            with open(file_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                self._data_cache[filename] = data
+                return data
+        return None
+    
+    def load_base_report_data(self) -> Dict[str, Any]:
+        """
+        加载 base_report_generator 生成的数据 (data.json)
+        
+        适配层：将 base_report_generator 的输出适配给 analysis_engine
+        
+        Returns:
+            包含 data_tables 和 sections 的字典
+        """
+        # 优先从 data.json 加载
+        data_json = self.load_json_data("data.json")
+        if data_json:
+            return data_json
+        
+        # 回退：尝试从 data/ 目录加载
+        return {
+            "data_tables": self.load_json_data("data/financial_5y.json"),
+            "sections": {}
+        }
+    
+    def get_financial_tables(self) -> str:
+        """获取财务数据表格"""
+        data = self.load_base_report_data()
+        tables = data.get("data_tables", [])
+        
+        if not tables:
+            return ""
+        
+        result = []
+        for table in tables:
+            title = table.get("title", "")
+            table_md = table.get("table_md", "")
+            result.append(f"### {title}\n{table_md}")
+        
+        return "\n\n".join(result)
+    
+    def get_section_text(self, section_name: str) -> str:
+        """获取指定 section 的文本内容"""
+        data = self.load_base_report_data()
+        sections = data.get("sections", {})
+        return sections.get(section_name, "")
+    
+    def load_business_info(self) -> str:
+        """加载年报业务信息"""
+        data_dir = f"{self.output_dir}/data"
+        if not os.path.exists(data_dir):
+            return ""
+        
+        business_info = []
+        for filename in os.listdir(data_dir):
+            if filename.startswith('annual_') and filename.endswith('_business.md'):
+                with open(f"{data_dir}/{filename}", 'r', encoding='utf-8') as f:
+                    business_info.append(f.read())
+        
+        return "\n\n---\n\n".join(business_info)
+    
+    def get_dimension_context(self, dimension: str) -> str:
+        """
+        获取指定分析维度需要的上下文数据
+        
+        适配层：支持从 base_report_generator 的 data.json 中读取数据
+        
+        Args:
+            dimension: 分析维度
+            
+        Returns:
+            格式化的上下文数据字符串
+        """
+        context_parts = []
+        
+        # 1. 加载 report.md (所有维度都需要)
+        report = self.load_report()
+        if report:
+            context_parts.append(f"## 核心财务指标报告\n{report[:5000]}")
+        
+        # 2. 加载财务数据表格 (所有维度都需要)
+        financial_tables = self.get_financial_tables()
+        if financial_tables:
+            context_parts.append(f"## 财务数据表格\n{financial_tables[:5000]}")
+        
+        # 3. 按维度加载特定数据 (从 data.json 的 sections 中获取)
+        if dimension == "financial_anomaly":
+            # 财务分析相关内容
+            section = self.get_section_text("financial_performance")
+            if section:
+                context_parts.append(f"## 财务表现分析\n{section[:3000]}")
+            
+            # 也可以从 investment_highlights 获取
+            highlights = self.get_section_text("investment_highlights")
+            if highlights:
+                context_parts.append(f"## 投资亮点\n{highlights[:2000]}")
+        
+        elif dimension == "business_insight":
+            # 公司概况和业务信息
+            overview = self.get_section_text("company_overview")
+            if overview:
+                context_parts.append(f"## 公司概况\n{overview[:5000]}")
+            
+            conclusions = self.get_section_text("conclusions")
+            if conclusions:
+                context_parts.append(f"## 分析结论\n{conclusions[:2000]}")
+        
+        elif dimension == "moat_identification":
+            # 护城河分析 - 从投资亮点和结论中获取
+            highlights = self.get_section_text("investment_highlights")
+            if highlights:
+                context_parts.append(f"## 投资亮点（竞争优势）\n{highlights[:3000]}")
+            
+            conclusions = self.get_section_text("conclusions")
+            if conclusions:
+                context_parts.append(f"## 结论（护城河）\n{conclusions[:2000]}")
+        
+        elif dimension == "sustainability":
+            # 可持续性评估 - 从风险因素和估值分析中获取
+            risk_factors = self.get_section_text("risk_factors")
+            if risk_factors:
+                context_parts.append(f"## 风险因素\n{risk_factors[:3000]}")
+            
+            valuation = self.get_section_text("valuation_analysis")
+            if valuation:
+                context_parts.append(f"## 估值分析\n{valuation[:2000]}")
+        
+        return "\n\n".join(context_parts)
+    
+    # ==================== LLM 调用 ====================
+    
+    def _call_llm(self, system_prompt: str, user_prompt: str) -> str:
+        """调用 LLM"""
+        try:
+            response = openai.chat.completions.create(
+                model=os.getenv("OPENAI_MODEL", "qwen-plus"),
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ],
+                temperature=0.7,
+                max_tokens=4000
+            )
+            
+            content = response.choices[0].message.content
+            self._token_count += estimate_tokens(system_prompt) + estimate_tokens(content)
+            return content
+            
+        except Exception as e:
+            return f"Error: {str(e)}"
+    
+    def _extract_score(self, text: str) -> Tuple[int, str]:
+        """从评分输出中提取分数"""
+        # 查找 【评分】 部分
+        match = re.search(r'【评分】\s*(\d+)/100', text)
+        if match:
+            score = int(match.group(1))
+            # 提取反馈
+            feedback_match = re.search(r'【反馈】(.*?)(?=【下一问题】|【结论】|$)', text, re.DOTALL)
+            feedback = feedback_match.group(1).strip() if feedback_match else ""
+            return score, feedback
+        return 0, "无法提取评分"
+    
+    def _extract_question(self, text: str) -> str:
+        """从输出中提取问题"""
+        match = re.search(r'【问题】(.*?)(?=【提问理由】|【回答】|$)', text, re.DOTALL)
+        if match:
+            return match.group(1).strip()
+        
+        match = re.search(r'【下一问题】(.*?)(?=【结论】|$)', text, re.DOTALL)
+        if match:
+            return match.group(1).strip()
+        
+        return ""
+    
+    def _extract_answer(self, text: str) -> str:
+        """从输出中提取答案"""
+        match = re.search(r'【回答】(.*?)(?=【数据支撑】|$)', text, re.DOTALL)
+        return match.group(1).strip() if match else text
+    
+    def _extract_conclusion(self, text: str) -> str:
+        """从输出中提取结论"""
+        match = re.search(r'【结论】(.*?)$', text, re.DOTALL)
+        return match.group(1).strip() if match else ""
+    
+    def _extract_data_request(self, text: str) -> Optional[str]:
+        """
+        从 Answer Provider 的回答中提取数据请求
+        
+        Args:
+            text: Answer Provider 的输出文本
+            
+        Returns:
+            数据请求字符串，如果没有则返回 None
+        """
+        match = re.search(r'【数据请求】(.*?)$', text, re.DOTALL)
+        if match:
+            request = match.group(1).strip()
+            # 排除空的请求
+            if request and "需要补充" in request:
+                return request
+        return None
+    
+    def _fetch_supplementary_data(self, data_request: str, stock_code: str) -> str:
+        """
+        调用 data-collector 补充数据
+        
+        Args:
+            data_request: 数据请求描述
+            stock_code: 股票代码
+            
+        Returns:
+            补充的数据内容
+        """
+        print(f"     📥 检测到数据请求: {data_request[:50]}...")
+        
+        try:
+            # 根据请求内容确定需要获取什么数据
+            request_lower = data_request.lower()
+            
+            supplementary_data = []
+            
+            # 判断需要获取什么类型的数据
+            if "财务" in data_request or "报表" in data_request:
+                try:
+                    from akshare_service.skills import get_financial_summary
+                    fin_data = get_financial_summary(stock_code, years=5)
+                    supplementary_data.append(f"## 补充财务数据\n{fin_data}")
+                    print(f"     ✅ 补充财务数据成功")
+                except Exception as e:
+                    print(f"     ⚠️ 补充财务数据失败: {e}")
+            
+            if "现金流" in data_request:
+                try:
+                    from akshare_service.skills import get_cashflow_data
+                    cashflow_data = get_cashflow_data(stock_code, years=5)
+                    supplementary_data.append(f"## 补充现金流数据\n{cashflow_data}")
+                    print(f"     ✅ 补充现金流数据成功")
+                except Exception as e:
+                    print(f"     ⚠️ 补充现金流数据失败: {e}")
+            
+            if "雪球" in data_request or "评论" in data_request or "文章" in data_request:
+                try:
+                    from data_collector.tools import xueqiu_api
+                    # 获取雪球评论
+                    comments = xueqiu_api.get_comments(stock_code, limit=20)
+                    supplementary_data.append(f"## 补充雪球评论\n{json.dumps(comments, ensure_ascii=False, indent=2)[:2000]}")
+                    print(f"     ✅ 补充雪球评论成功")
+                except Exception as e:
+                    print(f"     ⚠️ 补充雪球评论失败: {e}")
+            
+            if "公告" in data_request:
+                try:
+                    from data_collector.tools import xueqiu_api
+                    announcements = xueqiu_api.get_announcements(stock_code, limit=10)
+                    supplementary_data.append(f"## 补充公告\n{json.dumps(announcements, ensure_ascii=False, indent=2)[:2000]}")
+                    print(f"     ✅ 补充公告成功")
+                except Exception as e:
+                    print(f"     ⚠️ 补充公告失败: {e}")
+            
+            if "资讯" in data_request or "新闻" in data_request:
+                try:
+                    from data_collector.tools import tavily_api
+                    news = tavily_api.search_news(stock_code, limit=10)
+                    supplementary_data.append(f"## 补充资讯\n{json.dumps(news, ensure_ascii=False, indent=2)[:2000]}")
+                    print(f"     ✅ 补充资讯成功")
+                except Exception as e:
+                    print(f"     ⚠️ 补充资讯失败: {e}")
+            
+            if not supplementary_data:
+                print(f"     ⚠️ 无法解析数据请求类型")
+                return ""
+            
+            return "\n\n".join(supplementary_data)
+            
+        except Exception as e:
+            print(f"     ❌ 补充数据失败: {e}")
+            return ""
+    
+    # ==================== Loop 执行 ====================
+    
+    def _run_loop_for_dimension(
+        self,
+        dimension: str,
+        company: str,
+        stock_code: str
+    ) -> DimensionAnalysis:
+        """
+        对单个维度执行双 LLM Loop
+        
+        Args:
+            dimension: 维度名称
+            company: 公司名称
+            stock_code: 股票代码
+            
+        Returns:
+            DimensionAnalysis: 维度分析结果
+        """
+        dimension_analysis = DimensionAnalysis(
+            dimension=dimension,
+            status="in_progress"
+        )
+        
+        dimension_name = DIMENSION_NAMES.get(dimension, dimension)
+        topic_question = DIMENSION_QUESTIONS.get(dimension, "")
+        
+        # 获取上下文数据
+        context_data = self.get_dimension_context(dimension)
+        
+        # 第一轮：生成初始问题
+        print(f"  📋 [{dimension_name}] 第 1 轮: 生成初始问题...")
+        
+        initial_prompt = build_initial_question_prompt(
+            dimension, dimension_name, topic_question, context_data
+        )
+        
+        initial_response = self._call_llm(
+            QUESTION_GENERATOR_SYSTEM,
+            initial_prompt
+        )
+        
+        # 提取初始问题
+        question = self._extract_question(initial_response)
+        
+        if not question:
+            # 如果没有提取到问题，直接用主题问题
+            question = topic_question
+        
+        # 记录第一轮
+        round_num = 1
+        
+        # Answer Provider 回答
+        print(f"     ❓ 问题: {question[:50]}...")
+        
+        answer_prompt = build_answer_provider_prompt(
+            dimension, dimension_name, question, context_data
+        )
+        
+        answer_response = self._call_llm(
+            ANSWER_PROVIDER_SYSTEM,
+            answer_prompt
+        )
+        
+        answer = self._extract_answer(answer_response)
+        print(f"     ✅ 回答: {answer[:100]}...")
+        
+        # 检测数据请求并补充数据
+        data_request = self._extract_data_request(answer_response)
+        supplementary_data = ""
+        if data_request:
+            supplementary_data = self._fetch_supplementary_data(data_request, stock_code)
+            if supplementary_data:
+                # 将补充数据添加到上下文中
+                context_data = context_data + "\n\n" + supplementary_data
+        
+        # Question Generator 评分
+        qg_prompt = build_question_generator_prompt(
+            dimension, dimension_name, topic_question,
+            context_data,
+            f"Q: {question}\n\nA: {answer}"
+        )
+        
+        score_response = self._call_llm(
+            QUESTION_GENERATOR_SYSTEM,
+            qg_prompt
+        )
+        
+        score, feedback = self._extract_score(score_response)
+        
+        # 记录第一轮
+        qa = QuestionAnswer(
+            round=round_num,
+            question=question,
+            answer=answer,
+            score=score,
+            feedback=feedback
+        )
+        dimension_analysis.questions.append(qa)
+        dimension_analysis.rounds = round_num
+        
+        print(f"     📊 评分: {score}/100")
+        
+        # Loop 继续条件：评分 < 90 且轮次 < 3（更严格的退出标准）
+        max_rounds = 3
+        while score < 90 and round_num < max_rounds:
+            round_num += 1
+            print(f"  📋 [{dimension_name}] 第 {round_num} 轮: 继续追问...")
+            
+            # 生成下一轮问题
+            next_qg_prompt = build_question_generator_prompt(
+                dimension, dimension_name, topic_question,
+                context_data,
+                "\n\n".join([
+                    f"Q{q.round}: {q.question}\nA{q.round}: {q.answer}\n反馈: {q.feedback}"
+                    for q in dimension_analysis.questions
+                ])
+            )
+            
+            next_question_response = self._call_llm(
+                QUESTION_GENERATOR_SYSTEM,
+                next_qg_prompt
+            )
+            
+            next_question = self._extract_question(next_question_response)
+            
+            if not next_question or "无需追问" in next_question_response:
+                break
+            
+            print(f"     ❓ 问题: {next_question[:50]}...")
+            
+            # Answer Provider 回答
+            next_answer_prompt = build_answer_provider_prompt(
+                dimension, dimension_name, next_question,
+                context_data,
+                "\n\n".join([
+                    f"Q{q.round}: {q.question}\nA{q.round}: {q.answer}"
+                    for q in dimension_analysis.questions
+                ])
+            )
+            
+            next_answer_response = self._call_llm(
+                ANSWER_PROVIDER_SYSTEM,
+                next_answer_prompt
+            )
+            
+            next_answer = self._extract_answer(next_answer_response)
+            print(f"     ✅ 回答: {next_answer[:100]}...")
+            
+            # 检测数据请求并补充数据
+            next_data_request = self._extract_data_request(next_answer_response)
+            if next_data_request:
+                next_supplementary = self._fetch_supplementary_data(next_data_request, stock_code)
+                if next_supplementary:
+                    context_data = context_data + "\n\n" + next_supplementary
+            
+            # 评分
+            final_qg_prompt = build_question_generator_prompt(
+                dimension, dimension_name, topic_question,
+                context_data,
+                "\n\n".join([
+                    f"Q{q.round}: {q.question}\nA{q.round}: {q.answer}"
+                    for q in dimension_analysis.questions
+                ]) + f"\n\nQ{round_num}: {next_question}\nA{round_num}: {next_answer}"
+            )
+            
+            final_score_response = self._call_llm(
+                QUESTION_GENERATOR_SYSTEM,
+                final_qg_prompt
+            )
+            
+            score, feedback = self._extract_score(final_score_response)
+            
+            # 记录
+            qa = QuestionAnswer(
+                round=round_num,
+                question=next_question,
+                answer=next_answer,
+                score=score,
+                feedback=feedback
+            )
+            dimension_analysis.questions.append(qa)
+            dimension_analysis.rounds = round_num
+            
+            print(f"     📊 评分: {score}/100")
+        
+        # 完成分析
+        dimension_analysis.status = "completed"
+        dimension_analysis.final_score = score
+        
+        # 提取洞察
+        for qa in dimension_analysis.questions:
+            # 从答案中提取关键句子作为洞察
+            sentences = re.split(r'[。！？\n]', qa.answer)
+            for sent in sentences:
+                if len(sent) > 20 and any(keyword in sent for keyword in ['主要', '因为', '所以', '来自', '由于', '表明']):
+                    dimension_analysis.insights.append(sent.strip() + "。")
+        
+        # 去重
+        dimension_analysis.insights = list(dict.fromkeys(dimension_analysis.insights))[:5]
+        
+        # 结论
+        dimension_analysis.conclusion = self._extract_conclusion(
+            dimension_analysis.questions[-1].answer if dimension_analysis.questions else ""
+        )
+        
+        print(f"  ✅ [{dimension_name}] 完成 - 最终评分: {score}/100")
+        
+        return dimension_analysis
+    
+    # ==================== 主执行 ====================
+    
+    def analyze(
+        self,
+        company: str,
+        stock_code: str,
+        dimensions: List[str] = None
+    ) -> AnalysisEngineResult:
+        """
+        执行多维度分析
+        
+        Args:
+            company: 公司名称
+            stock_code: 股票代码
+            dimensions: 分析维度列表，默认全部
+            
+        Returns:
+            AnalysisEngineResult: 分析结果
+        """
+        if dimensions is None:
+            dimensions = ALL_DIMENSIONS
+        
+        result = AnalysisEngineResult(
+            company=company,
+            stock_code=stock_code,
+            analysis_date=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        )
+        
+        print(f"\n{'='*60}")
+        print(f"🚀 开始分析: {company} ({stock_code})")
+        print(f"📊 分析维度: {', '.join([DIMENSION_NAMES.get(d, d) for d in dimensions])}")
+        print(f"{'='*60}\n")
+        
+        for dimension in dimensions:
+            dimension_analysis = self._run_loop_for_dimension(
+                dimension, company, stock_code
+            )
+            result.dimensions.append(dimension_analysis)
+            result.total_rounds += dimension_analysis.rounds
+        
+        # 计算总分
+        if result.dimensions:
+            scores = [d.final_score for d in result.dimensions if d.final_score > 0]
+            result.overall_score = sum(scores) // len(scores) if scores else 0
+        
+        # 汇总洞察
+        for d in result.dimensions:
+            result.summary_insights.extend(d.insights[:2])
+        
+        result.total_tokens = self._token_count
+        
+        print(f"\n{'='*60}")
+        print(f"✅ 分析完成!")
+        print(f"📊 总体评分: {result.overall_score}/100")
+        print(f"🔄 总循环次数: {result.total_rounds}")
+        print(f"📝 总 Token 消耗: {result.total_tokens:,}")
+        print(f"{'='*60}\n")
+        
+        return result
+    
+    def save_result(self, result: AnalysisEngineResult, output_path: str):
+        """保存结果到文件"""
+        with open(output_path, 'w', encoding='utf-8') as f:
+            json.dump(result.to_dict(), f, ensure_ascii=False, indent=2)
+        
+        print(f"💾 结果已保存到: {output_path}")
+
+
+def estimate_tokens(text: str) -> int:
+    """估算文本的 token 数量"""
+    if not text:
+        return 0
+    
+    chinese_chars = len(re.findall(r'[\u4e00-\u9fff]', text))
+    other_chars = len(text) - chinese_chars
+    
+    tokens = int(chinese_chars / 1.5) + int(other_chars / 4)
+    return max(tokens, 1)
+
+
+# 如果直接运行此文件
+if __name__ == "__main__":
+    import argparse
+    
+    parser = argparse.ArgumentParser(description="分析引擎测试")
+    parser.add_argument("--company", default="贵州茅台", help="公司名称")
+    parser.add_argument("--stock", default="600519", help="股票代码")
+    parser.add_argument("--dir", default="/tmp/company_analysis", help="data-collector 输出目录")
+    
+    args = parser.parse_args()
+    
+    # 运行分析
+    engine = AnalysisEngine(args.dir)
+    result = engine.analyze(args.company, args.stock)
+    
+    # 输出结果
+    print(json.dumps(result.to_dict(), ensure_ascii=False, indent=2))

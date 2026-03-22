@@ -728,25 +728,44 @@ class AnalysisEngine:
             # 调用LLM
             response = self.call_llm(system_prompt, user_prompt)
             
-            # 调试：打印原始响应
-            if round_num == 1:
-                print(f"\n[DEBUG] LLM原始响应 (前500字符):")
-                print(response[:500])
-                print("...[truncated]")
-            
             # 解析结果
             thinking = self.parse_thinking_round(response, round_num)
             
-            # 检查是否需要补充数据
-            data_request = self._extract_data_request(thinking.action)
-            if data_request:
-                print(f"    📡 需要补充数据: {data_request.get('type')}")
-                # 调用工具获取补充数据
-                supplementary, used = self._fetch_supplementary_data(data_request, stock_code)
-                if supplementary:
-                    thinking.data_used = used
-                    # 将补充数据添加到下一轮上下文
-                    thinking.conclusion += f"\n\n{supplementary}"
+            # ========== 详细日志输出 ==========
+            print(f"\n  ┌─ 第 {round_num} 轮思考 ─")
+            print(f"  │")
+            # 打印反思
+            reflection_lines = thinking.reflection.strip().split('\n')[:5]  # 只取前5行
+            print(f"  │ 📝 反思 ({len(thinking.reflection)}字符):")
+            for line in reflection_lines[:3]:
+                print(f"  │    {line[:80]}")
+            if len(thinking.reflection) > 240:
+                print(f"  │    ... (还有{len(thinking.reflection)-240}字符)")
+            print(f"  │")
+            # 打印行动
+            if thinking.action.strip():
+                action_lines = thinking.action.strip().split('\n')[:3]
+                print(f"  │ 🔧 行动 ({len(thinking.action)}字符):")
+                for line in action_lines:
+                    print(f"  │    {line[:80]}")
+            print(f"  │")
+            # 打印结论
+            conclusion_lines = thinking.conclusion.strip().split('\n')[:5]
+            print(f"  │ 🎯 结论 ({len(thinking.conclusion)}字符):")
+            for line in conclusion_lines[:3]:
+                print(f"  │    {line[:80]}")
+            if len(thinking.conclusion) > 240:
+                print(f"  │    ... (还有{len(thinking.conclusion)-240}字符)")
+            print(f"  │")
+            # 打印新发现
+            if thinking.new_insights:
+                print(f"  │ 💡 新发现 ({len(thinking.new_insights)}个):")
+                for i, insight in enumerate(thinking.new_insights[:3]):
+                    print(f"  │    {i+1}. {insight[:60]}...")
+            else:
+                print(f"  │ 💡 新发现: 无")
+            print(f"  └")
+            # ========== 日志结束 ==========
             
             # 计算评分
             score = self.calculate_score(thinking)

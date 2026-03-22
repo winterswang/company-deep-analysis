@@ -715,6 +715,7 @@ class AnalysisEngine:
         
         # 初始化
         analysis = DimensionAnalysis(dimension=dimension, status="in_progress")
+        analysis.supplementary_data_called = False  # 跟踪是否已调用补充数据
         previous_rounds = []
         no_discovery_count = 0
         
@@ -766,6 +767,17 @@ class AnalysisEngine:
                 print(f"  │ 💡 新发现: 无")
             print(f"  └")
             # ========== 日志结束 ==========
+            
+            # ========== 约束工具调用：只在第2轮允许调用一次 ==========
+            if round_num == 2 and not analysis.supplementary_data_called:
+                data_request = self._extract_data_request(thinking.action)
+                if data_request:
+                    print(f"    📡 第2轮补充数据: {data_request.get('type')}")
+                    supplementary, used = self._fetch_supplementary_data(data_request, stock_code)
+                    if supplementary:
+                        thinking.data_used = used
+                        thinking.conclusion += f"\n\n{supplementary}"
+                        analysis.supplementary_data_called = True
             
             # 计算评分
             score = self.calculate_score(thinking)

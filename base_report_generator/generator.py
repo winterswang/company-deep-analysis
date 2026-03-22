@@ -110,11 +110,22 @@ class BaseReportGenerator:
             if collected_data.get('local') and collected_data['local'].success:
                 data_sources.append('本地知识库')
             
+            # 将 collected_data 转换为可序列化格式
+            raw_data = {}
+            for key, response in collected_data.items():
+                if hasattr(response, 'success') and response.success:
+                    raw_data[key] = {
+                        'success': response.success,
+                        'data': response.data,
+                        'metadata': response.metadata,
+                    }
+            
             report = BaseReport(
                 stock_code=request.stock_code,
                 stock_name=stock_name,
                 market=request.market,
                 report_date=datetime.now().strftime("%Y-%m-%d %H:%M"),
+                raw_data=raw_data,  # 添加原始数据
                 data_tables=data_tables,
                 quality_score=quality_score,
                 data_sources=data_sources,
@@ -868,7 +879,17 @@ class BaseReportGenerator:
         with open(metadata_json_path, 'w', encoding='utf-8') as f:
             json.dump(result.metadata, f, ensure_ascii=False, indent=2)
         
-        # 4. 创建 latest 符号链接
+        # 4. 保存原始数据到 raw/ 目录
+        raw_dir = os.path.join(full_path, "raw")
+        os.makedirs(raw_dir, exist_ok=True)
+        
+        if report.raw_data:
+            for key, value in report.raw_data.items():
+                raw_file_path = os.path.join(raw_dir, f"{key}.json")
+                with open(raw_file_path, 'w', encoding='utf-8') as f:
+                    json.dump(value, f, ensure_ascii=False, indent=2)
+        
+        # 5. 创建 latest 符号链接
         if create_latest_link:
             latest_link = os.path.join(output_dir, f"{report.stock_code}_latest")
             
@@ -889,6 +910,7 @@ class BaseReportGenerator:
         print(f"   📄 report.md - 完整报告")
         print(f"   📊 data.json - 原始数据")
         print(f"   📋 metadata.json - 元数据")
+        print(f"   📁 raw/ - 原始数据目录")
         
         if create_latest_link:
             latest_link = os.path.join(output_dir, f"{report.stock_code}_latest")

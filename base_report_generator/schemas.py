@@ -73,6 +73,9 @@ class BaseReport:
     market: str
     report_date: str
     
+    # 原始数据（用于保存和后续分析）
+    raw_data: Dict[str, Any] = field(default_factory=dict)  # 原始数据字典
+    
     # 数据部分（横向表格）
     data_tables: List[DataTable] = field(default_factory=list)  # 数据表格列表
     quality_score: float = 0.0  # 数据质量评分
@@ -216,6 +219,7 @@ class BaseReport:
             "stock_name": self.stock_name,
             "market": self.market,
             "report_date": self.report_date,
+            "raw_data": self.raw_data,  # 原始数据
             "data_tables": [
                 {"title": t.title, "table_md": t.table_md}
                 for t in self.data_tables

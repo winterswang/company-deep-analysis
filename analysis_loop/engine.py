@@ -155,6 +155,112 @@ class AnalysisEngine:
                 return self._data_cache
         
         return {}
+    
+    def load_raw_data(self, data_type: str = None) -> Dict[str, Any]:
+        """
+        加载原始数据（从 data.json 的 raw_data 字段 或 raw/ 目录）
+        
+        Args:
+            data_type: 可选，指定数据类型。如果为 None，加载所有原始数据。
+                       支持: financial, cashflow, roic, xueqiu, news, industry, local
+            
+        Returns:
+            原始数据字典或指定类型的数据
+        """
+        # 首先尝试从 data.json 的 raw_data 字段加载
+        base_data = self.load_base_report_data()
+        raw_data = base_data.get('raw_data', {})
+        
+        if raw_data:
+            if data_type:
+                return raw_data.get(data_type, {})
+            return raw_data
+        
+        # 如果 data.json 中没有 raw_data，尝试从 raw/ 目录加载
+        raw_dir = os.path.join(self.output_dir, "raw")
+        if not os.path.exists(raw_dir):
+            return {}
+        
+        if data_type:
+            raw_file = os.path.join(raw_dir, f"{data_type}.json")
+            if os.path.exists(raw_file):
+                with open(raw_file, 'r', encoding='utf-8') as f:
+                    return json.load(f)
+            return {}
+        
+        # 加载所有原始数据文件
+        all_raw_data = {}
+        for filename in os.listdir(raw_dir):
+            if filename.endswith('.json'):
+                key = filename[:-5]  # 去掉 .json 后缀
+                with open(os.path.join(raw_dir, filename), 'r', encoding='utf-8') as f:
+                    all_raw_data[key] = json.load(f)
+        return all_raw_data
+
+    def get_xueqiu_data(self) -> str:
+        """获取雪球数据（讨论、资讯、文章、公告）"""
+        raw = self.load_raw_data('xueqiu')
+        if not raw:
+            return "无雪球数据"
+        
+        data = raw.get('data', {})
+        if not data:
+            return "无雪球数据"
+        
+        result = []
+        for key, value in data.items():
+            if isinstance(value, list) and value:
+                result.append(f"## 雪球-{key}")
+                for item in value[:10]:  # 限制每个类别最多10条
+                    if isinstance(item, dict):
+                        title = item.get('title', item.get('text', ''))[:100]
+                        result.append(f"- {title}")
+        
+        return "\n".join(result) if result else "无雪球数据"
+    
+    def get_news_data(self) -> str:
+        """获取新闻数据"""
+        raw = self.load_raw_data('news')
+        if not raw:
+            return "无新闻数据"
+        
+        data = raw.get('data', [])
+        # 处理 news 数据的特殊格式：data 是 dict，actual list 在 results 中
+        if isinstance(data, dict):
+            data = data.get('results', [])
+        if not data:
+            return "无新闻数据"
+        
+        result = ["## 新闻数据"]
+        for item in data[:10]:  # 限制最多10条
+            if isinstance(item, dict):
+                title = item.get('title', '')
+                url = item.get('url', '')
+                result.append(f"- [{title}]({url})")
+        
+        return "\n".join(result)
+    
+    def get_industry_data(self) -> str:
+        """获取行业数据"""
+        raw = self.load_raw_data('industry')
+        if not raw:
+            return "无行业数据"
+        
+        data = raw.get('data', [])
+        # 处理 industry 数据的特殊格式：data 是 dict，actual list 在 results 中
+        if isinstance(data, dict):
+            data = data.get('results', [])
+        if not data:
+            return "无行业数据"
+        
+        result = ["## 行业数据"]
+        for item in data[:10]:  # 限制最多10条
+            if isinstance(item, dict):
+                title = item.get('title', '')
+                url = item.get('url', '')
+                result.append(f"- [{title}]({url})")
+        
+        return "\n".join(result)
 
     def get_financial_tables(self) -> str:
         """获取财务表格数据"""
@@ -164,13 +270,19 @@ class AnalysisEngine:
         result = []
         for table in tables:
             if isinstance(table, dict):
-                name = table.get('name', 'Unknown')
-                headers = table.get('headers', [])
-                rows = table.get('data', [])
-                result.append(f"## {name}")
-                result.append(f"Headers: {headers}")
-                for row in rows:
-                    result.append(str(row))
+                # 支持多种字段名: title/name, table_md/data
+                title = table.get('title', table.get('name', 'Unknown'))
+                table_md = table.get('table_md', '')
+                if table_md:
+                    result.append(f"## {title}\n{table_md}")
+                else:
+                    # 兼容旧格式
+                    headers = table.get('headers', [])
+                    rows = table.get('data', [])
+                    result.append(f"## {title}")
+                    result.append(f"Headers: {headers}")
+                    for row in rows:
+                        result.append(str(row))
         
         return "\n".join(result) if result else "无财务表格数据"
 
@@ -217,6 +329,27 @@ class AnalysisEngine:
         conclusions = self.get_section_text("conclusions")
         if conclusions:
             context_parts.append(f"## 结论\n{conclusions[:500]}")
+        
+        # 7. 补充信息 - 从原始数据中获取（雪球、新闻、行业）
+        supplementary_parts = []
+        
+        # 雪球讨论
+        xueqiu = self.get_xueqiu_data()
+        if xueqiu and "无" not in xueqiu:
+            supplementary_parts.append(xueqiu[:2000])
+        
+        # 新闻
+        news = self.get_news_data()
+        if news and "无" not in news:
+            supplementary_parts.append(news)
+        
+        # 行业
+        industry = self.get_industry_data()
+        if industry and "无" not in industry:
+            supplementary_parts.append(industry)
+        
+        if supplementary_parts:
+            context_parts.append(f"## 市场舆情与行业动态\n{'='*40}\n" + "\n\n".join(supplementary_parts))
         
         context = "\n\n".join(context_parts)
         self._dimension_contexts[dimension] = context
@@ -416,7 +549,6 @@ class AnalysisEngine:
 
     def parse_thinking_round(self, text: str, round_num: int) -> ThinkingRound:
         """解析思考轮次"""
-        # 简单解析，实际可以用更复杂的正则
         lines = text.split('\n')
         
         reflection = ""
@@ -428,19 +560,18 @@ class AnalysisEngine:
         current_section = None
         for line in lines:
             line = line.strip()
-            if line.startswith("### 反思"):
+            # 支持中英文标题
+            if any(line.startswith(marker) for marker in ["### 反思", "### Reflection", "### 思考", "## 反思", "## 思考"]):
                 current_section = "reflection"
-            elif line.startswith("### 行动"):
+            elif any(line.startswith(marker) for marker in ["### 行动", "### Action", "## 行动"]):
                 current_section = "action"
-            elif line.startswith("### 推理"):
+            elif any(line.startswith(marker) for marker in ["### 推理", "### Reasoning", "## 推理"]):
                 current_section = "reasoning"
-            elif line.startswith("### 结论"):
+            elif any(line.startswith(marker) for marker in ["### 结论", "### Conclusion", "## 结论"]):
                 current_section = "conclusion"
-            elif line.startswith("### 自评"):
+            elif line.startswith("### 自评") or line.startswith("## 自评"):
                 current_section = "score"
-            elif line.startswith("- 新问题发现:"):
-                pass  # 评分
-            elif current_section and line:
+            elif current_section and line and not line.startswith("#"):
                 if current_section == "reflection":
                     reflection += line + "\n"
                 elif current_section == "action":
@@ -450,9 +581,25 @@ class AnalysisEngine:
                 elif current_section == "conclusion":
                     conclusion += line + "\n"
         
-        # 尝试提取新发现
-        if "新发现" in conclusion.lower() or "洞察" in conclusion.lower():
-            new_insights = [conclusion.strip()[:200]]
+        # 尝试提取新发现 - 从推理和结论中提取关键洞察
+        insight_keywords = ["核心判断", "核心假设", "关键发现", "核心洞察", "结论：", "判断：", "需要关注", "风险点", "机会点"]
+        for keyword in insight_keywords:
+            if keyword in conclusion:
+                new_insights.append(conclusion.strip()[:200])
+                break
+            elif keyword in reasoning:
+                # 从推理中提取核心观点
+                reasoning_lines = reasoning.split('\n')
+                for rl in reasoning_lines:
+                    if keyword in rl:
+                        new_insights.append(rl.strip()[:200])
+                        break
+        
+        # 如果没有提取到，尝试从结论中提取最后一段作为洞察
+        if not new_insights and conclusion:
+            conclusion_clean = conclusion.strip()
+            if len(conclusion_clean) > 20:
+                new_insights = [conclusion_clean[:200]]
         
         return ThinkingRound(
             round=round_num,
@@ -580,6 +727,12 @@ class AnalysisEngine:
             
             # 调用LLM
             response = self.call_llm(system_prompt, user_prompt)
+            
+            # 调试：打印原始响应
+            if round_num == 1:
+                print(f"\n[DEBUG] LLM原始响应 (前500字符):")
+                print(response[:500])
+                print("...[truncated]")
             
             # 解析结果
             thinking = self.parse_thinking_round(response, round_num)
